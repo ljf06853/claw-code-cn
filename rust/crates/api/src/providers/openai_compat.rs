@@ -16,13 +16,19 @@ use super::{Provider, ProviderFuture};
 
 pub const DEFAULT_XAI_BASE_URL: &str = "https://api.x.ai/v1";
 pub const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+pub const DEFAULT_MINIMAX_BASE_URL: &str = "https://api.minimax.chat/v1";
+pub const DEFAULT_DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com";
+pub const DEFAULT_QWEN_BASE_URL: &str = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+pub const DEFAULT_DOUBAO_BASE_URL: &str = "https://ark.cn-beijing.volces.com/api/v3";
+pub const DEFAULT_GLM_BASE_URL: &str = "https://open.bigmodel.cn/api/paas/v4";
+pub const DEFAULT_GEMINI_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta/openai";
 const REQUEST_ID_HEADER: &str = "request-id";
 const ALT_REQUEST_ID_HEADER: &str = "x-request-id";
 const DEFAULT_INITIAL_BACKOFF: Duration = Duration::from_millis(200);
 const DEFAULT_MAX_BACKOFF: Duration = Duration::from_secs(2);
 const DEFAULT_MAX_RETRIES: u32 = 2;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenAiCompatConfig {
     pub provider_name: &'static str,
     pub api_key_env: &'static str,
@@ -30,8 +36,23 @@ pub struct OpenAiCompatConfig {
     pub default_base_url: &'static str,
 }
 
+/// 动态配置版本，允许用户自定义 Provider（用于 CLAW_API_KEY + CLAW_BASE_URL）
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DynamicOpenAiConfig {
+    pub provider_name: String,
+    pub api_key: String,
+    pub base_url: String,
+}
+
 const XAI_ENV_VARS: &[&str] = &["XAI_API_KEY"];
 const OPENAI_ENV_VARS: &[&str] = &["OPENAI_API_KEY"];
+const MINIMAX_ENV_VARS: &[&str] = &["MINIMAX_API_KEY"];
+const DEEPSEEK_ENV_VARS: &[&str] = &["DEEPSEEK_API_KEY"];
+const QWEN_ENV_VARS: &[&str] = &["QWEN_API_KEY"];
+const DOUBAO_ENV_VARS: &[&str] = &["DOUBAO_API_KEY"];
+const GLM_ENV_VARS: &[&str] = &["GLM_API_KEY"];
+const GEMINI_ENV_VARS: &[&str] = &["GEMINI_API_KEY"];
+const CUSTOM_ENV_VARS: &[&str] = &["CLAW_API_KEY"];
 
 impl OpenAiCompatConfig {
     #[must_use]
@@ -53,11 +74,90 @@ impl OpenAiCompatConfig {
             default_base_url: DEFAULT_OPENAI_BASE_URL,
         }
     }
+
+    #[must_use]
+    pub const fn minimax() -> Self {
+        Self {
+            provider_name: "MiniMax",
+            api_key_env: "MINIMAX_API_KEY",
+            base_url_env: "MINIMAX_BASE_URL",
+            default_base_url: DEFAULT_MINIMAX_BASE_URL,
+        }
+    }
+
+    #[must_use]
+    pub const fn deepseek() -> Self {
+        Self {
+            provider_name: "DeepSeek",
+            api_key_env: "DEEPSEEK_API_KEY",
+            base_url_env: "DEEPSEEK_BASE_URL",
+            default_base_url: DEFAULT_DEEPSEEK_BASE_URL,
+        }
+    }
+
+    #[must_use]
+    pub const fn qwen() -> Self {
+        Self {
+            provider_name: "Qwen",
+            api_key_env: "QWEN_API_KEY",
+            base_url_env: "QWEN_BASE_URL",
+            default_base_url: DEFAULT_QWEN_BASE_URL,
+        }
+    }
+
+    #[must_use]
+    pub const fn doubao() -> Self {
+        Self {
+            provider_name: "Doubao",
+            api_key_env: "DOUBAO_API_KEY",
+            base_url_env: "DOUBAO_BASE_URL",
+            default_base_url: DEFAULT_DOUBAO_BASE_URL,
+        }
+    }
+
+    #[must_use]
+    pub const fn glm() -> Self {
+        Self {
+            provider_name: "GLM",
+            api_key_env: "GLM_API_KEY",
+            base_url_env: "GLM_BASE_URL",
+            default_base_url: DEFAULT_GLM_BASE_URL,
+        }
+    }
+
+    #[must_use]
+    pub const fn gemini() -> Self {
+        Self {
+            provider_name: "Gemini",
+            api_key_env: "GEMINI_API_KEY",
+            base_url_env: "GEMINI_BASE_URL",
+            default_base_url: DEFAULT_GEMINI_BASE_URL,
+        }
+    }
+
+    /// 通用自定义配置：使用 CLAW_API_KEY + CLAW_BASE_URL
+    #[must_use]
+    pub const fn custom() -> Self {
+        Self {
+            provider_name: "Custom",
+            api_key_env: "CLAW_API_KEY",
+            base_url_env: "CLAW_BASE_URL",
+            default_base_url: DEFAULT_OPENAI_BASE_URL,
+        }
+    }
+
     #[must_use]
     pub fn credential_env_vars(self) -> &'static [&'static str] {
         match self.provider_name {
             "xAI" => XAI_ENV_VARS,
             "OpenAI" => OPENAI_ENV_VARS,
+            "MiniMax" => MINIMAX_ENV_VARS,
+            "DeepSeek" => DEEPSEEK_ENV_VARS,
+            "Qwen" => QWEN_ENV_VARS,
+            "Doubao" => DOUBAO_ENV_VARS,
+            "GLM" => GLM_ENV_VARS,
+            "Gemini" => GEMINI_ENV_VARS,
+            "Custom" => CUSTOM_ENV_VARS,
             _ => &[],
         }
     }

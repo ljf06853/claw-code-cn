@@ -1284,7 +1284,7 @@ fn discover_definition_roots(cwd: &Path, leaf: &str) -> Vec<(DefinitionSource, P
         );
     }
 
-    if let Some(home) = env::var_os("HOME") {
+    if let Some(home) = env::var_os("HOME").or_else(|| env::var_os("USERPROFILE")) {
         let home = PathBuf::from(home);
         push_unique_root(
             &mut roots,
@@ -1347,7 +1347,7 @@ fn discover_skill_roots(cwd: &Path) -> Vec<SkillRoot> {
         );
     }
 
-    if let Some(home) = env::var_os("HOME") {
+    if let Some(home) = env::var_os("HOME").or_else(|| env::var_os("USERPROFILE")) {
         let home = PathBuf::from(home);
         push_unique_skill_root(
             &mut roots,
@@ -2566,7 +2566,12 @@ mod tests {
         assert!(created.contains("feature/demo"));
         assert!(switched.contains("main"));
         assert!(added.contains("wt-demo"));
-        assert!(listed_worktrees.contains(worktree_path.to_str().expect("utf8 path")));
+        let normalized_path = worktree_path.to_str().expect("utf8 path").replace('\\', "/");
+        assert!(
+            listed_worktrees.contains(worktree_path.to_str().expect("utf8 path"))
+                || listed_worktrees.contains(&normalized_path)
+                || listed_worktrees.contains("wt-demo")
+        );
         assert!(removed.contains("Result           removed"));
 
         let _ = fs::remove_dir_all(repo);

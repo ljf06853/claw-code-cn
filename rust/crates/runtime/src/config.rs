@@ -422,8 +422,16 @@ impl RuntimePluginConfig {
 pub fn default_config_home() -> PathBuf {
     std::env::var_os("CLAW_CONFIG_HOME")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".claw")))
+        .or_else(|| home_dir().map(|home| home.join(".claw")))
         .unwrap_or_else(|| PathBuf::from(".claw"))
+}
+
+/// 跨平台获取用户主目录：优先 HOME，回退到 USERPROFILE（Windows）
+#[must_use]
+pub fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
 }
 
 impl RuntimeHookConfig {
