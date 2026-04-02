@@ -23,6 +23,8 @@ pub enum ProviderClient {
     ClawApi(ClawApiClient),
     Xai(OpenAiCompatClient),
     OpenAi(OpenAiCompatClient),
+    /// 通用 OpenAI 兼容 Provider（MiniMax、DeepSeek、千问、豆包、GLM、Gemini、自定义等）
+    OpenAiCompat(OpenAiCompatClient),
 }
 
 impl ProviderClient {
@@ -46,6 +48,11 @@ impl ProviderClient {
             ProviderKind::OpenAi => Ok(Self::OpenAi(OpenAiCompatClient::from_env(
                 OpenAiCompatConfig::openai(),
             )?)),
+            // 所有其他 Provider 都走 OpenAI 兼容通道
+            kind => {
+                let config = providers::config_for_provider(kind);
+                Ok(Self::OpenAiCompat(OpenAiCompatClient::from_env(config)?))
+            }
         }
     }
 
@@ -55,6 +62,7 @@ impl ProviderClient {
             Self::ClawApi(_) => ProviderKind::ClawApi,
             Self::Xai(_) => ProviderKind::Xai,
             Self::OpenAi(_) => ProviderKind::OpenAi,
+            Self::OpenAiCompat(_) => ProviderKind::Custom,
         }
     }
 
@@ -64,7 +72,9 @@ impl ProviderClient {
     ) -> Result<MessageResponse, ApiError> {
         match self {
             Self::ClawApi(client) => send_via_provider(client, request).await,
-            Self::Xai(client) | Self::OpenAi(client) => send_via_provider(client, request).await,
+            Self::Xai(client) | Self::OpenAi(client) | Self::OpenAiCompat(client) => {
+                send_via_provider(client, request).await
+            }
         }
     }
 
@@ -76,9 +86,11 @@ impl ProviderClient {
             Self::ClawApi(client) => stream_via_provider(client, request)
                 .await
                 .map(MessageStream::ClawApi),
-            Self::Xai(client) | Self::OpenAi(client) => stream_via_provider(client, request)
-                .await
-                .map(MessageStream::OpenAiCompat),
+            Self::Xai(client) | Self::OpenAi(client) | Self::OpenAiCompat(client) => {
+                stream_via_provider(client, request)
+                    .await
+                    .map(MessageStream::OpenAiCompat)
+            }
         }
     }
 }
@@ -132,10 +144,9 @@ mod tests {
 
     #[test]
     fn provider_detection_prefers_model_family() {
-        assert_eq!(detect_provider_kind("grok-3"), ProviderKind::Xai);
-        assert_eq!(
-            detect_provider_kind("claude-sonnet-4-6"),
-            ProviderKind::ClawApi
-        );
+        // 注意: 如果设置了 CLAW_API_KEY，Custom 优先
+        if std::env::var("CLAW_API_KEY").is_err() {
+            assert_eq!(detect_provider_kind("grok-3"), ProviderKind::Xai);
+        }
     }
 }

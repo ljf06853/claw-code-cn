@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
-use std::fs::{self, File};
-use std::io::{self, Read};
+use std::fs;
+use std::io;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -319,7 +319,7 @@ pub fn parse_oauth_callback_query(query: &str) -> Result<OAuthCallbackParams, St
 
 fn generate_random_token(bytes: usize) -> io::Result<String> {
     let mut buffer = vec![0_u8; bytes];
-    File::open("/dev/urandom")?.read_exact(&mut buffer)?;
+    getrandom::getrandom(&mut buffer).map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
     Ok(base64url_encode(&buffer))
 }
 
@@ -328,6 +328,7 @@ fn credentials_home_dir() -> io::Result<PathBuf> {
         return Ok(PathBuf::from(path));
     }
     let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "HOME is not set"))?;
     Ok(PathBuf::from(home).join(".claw"))
 }

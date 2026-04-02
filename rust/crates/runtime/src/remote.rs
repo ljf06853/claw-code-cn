@@ -236,6 +236,7 @@ pub fn inherited_upstream_proxy_env(
 
 fn default_ca_bundle_path() -> PathBuf {
     env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
         .map_or_else(|| PathBuf::from("."), PathBuf::from)
         .join(".ccr")
         .join("ca-bundle.crt")

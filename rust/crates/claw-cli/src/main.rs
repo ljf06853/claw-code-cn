@@ -17,7 +17,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use api::{
     resolve_startup_auth_source, AuthSource, ClawApiClient, ContentBlockDelta, InputContentBlock,
-    InputMessage, MessageRequest, MessageResponse, OutputContentBlock,
+    InputMessage, MessageRequest, MessageResponse, OutputContentBlock, ProviderClient,
     StreamEvent as ApiStreamEvent, ToolChoice, ToolDefinition, ToolResultContentBlock,
 };
 
@@ -41,7 +41,10 @@ use runtime::{
 use serde_json::json;
 use tools::GlobalToolRegistry;
 
-const DEFAULT_MODEL: &str = "claude-opus-4-6";
+const FALLBACK_MODEL: &str = "claude-opus-4-6";
+fn default_model() -> String {
+    std::env::var("CLAW_MODEL").unwrap_or_else(|_| FALLBACK_MODEL.to_string())
+}
 fn max_tokens_for_model(model: &str) -> u32 {
     if model.contains("opus") {
         32_000
@@ -171,7 +174,7 @@ impl CliOutputFormat {
 
 #[allow(clippy::too_many_lines)]
 fn parse_args(args: &[String]) -> Result<CliAction, String> {
-    let mut model = DEFAULT_MODEL.to_string();
+    let mut model = default_model();
     let mut output_format = CliOutputFormat::Text;
     let mut permission_mode = default_permission_mode();
     let mut wants_version = false;
@@ -3040,7 +3043,7 @@ impl runtime::PermissionPrompter for CliPermissionPrompter {
 
 struct DefaultRuntimeClient {
     runtime: tokio::runtime::Runtime,
-    client: ClawApiClient,
+    client: ProviderClient,
     model: String,
     enable_tools: bool,
     emit_output: bool,
@@ -3060,8 +3063,7 @@ impl DefaultRuntimeClient {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
             runtime: tokio::runtime::Runtime::new()?,
-            client: ClawApiClient::from_auth(resolve_cli_auth_source()?)
-                .with_base_url(api::read_base_url()),
+            client: ProviderClient::from_model(&model)?,
             model,
             enable_tools,
             emit_output,
@@ -4117,7 +4119,7 @@ mod tests {
         render_repl_help, render_unknown_repl_command, resolve_model_alias, response_to_events,
         resume_supported_slash_commands, slash_command_completion_candidates, status_context,
         CliAction, CliOutputFormat, InternalPromptProgressEvent, InternalPromptProgressState,
-        SlashCommand, StatusUsage, DEFAULT_MODEL,
+        SlashCommand, StatusUsage, default_model,
     };
     use api::{MessageResponse, OutputContentBlock, Usage};
     use plugins::{PluginTool, PluginToolDefinition, PluginToolPermission};
@@ -4156,7 +4158,7 @@ mod tests {
         assert_eq!(
             parse_args(&[]).expect("args should parse"),
             CliAction::Repl {
-                model: DEFAULT_MODEL.to_string(),
+                model: default_model(),
                 allowed_tools: None,
                 permission_mode: PermissionMode::DangerFullAccess,
             }
@@ -4174,7 +4176,7 @@ mod tests {
             parse_args(&args).expect("args should parse"),
             CliAction::Prompt {
                 prompt: "hello world".to_string(),
-                model: DEFAULT_MODEL.to_string(),
+                model: default_model(),
                 output_format: CliOutputFormat::Text,
                 allowed_tools: None,
                 permission_mode: PermissionMode::DangerFullAccess,
@@ -4249,7 +4251,7 @@ mod tests {
         assert_eq!(
             parse_args(&args).expect("args should parse"),
             CliAction::Repl {
-                model: DEFAULT_MODEL.to_string(),
+                model: default_model(),
                 allowed_tools: None,
                 permission_mode: PermissionMode::ReadOnly,
             }
@@ -4266,7 +4268,7 @@ mod tests {
         assert_eq!(
             parse_args(&args).expect("args should parse"),
             CliAction::Repl {
-                model: DEFAULT_MODEL.to_string(),
+                model: default_model(),
                 allowed_tools: Some(
                     ["glob_search", "read_file", "write_file"]
                         .into_iter()

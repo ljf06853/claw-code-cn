@@ -807,7 +807,18 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
     use std::io::ErrorKind;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+
+    #[cfg(unix)]
+    fn set_exec_perms(path: &Path) {
+        let mut permissions = fs::metadata(path).expect("metadata").permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).expect("chmod");
+    }
+
+    #[cfg(not(unix))]
+    fn set_exec_perms(_path: &Path) {}
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -846,9 +857,7 @@ mod tests {
             "#!/bin/sh\nprintf 'READY:%s\\n' \"$MCP_TEST_TOKEN\"\nIFS= read -r line\nprintf 'ECHO:%s\\n' \"$line\"\n",
         )
         .expect("write script");
-        let mut permissions = fs::metadata(&script_path).expect("metadata").permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&script_path, permissions).expect("chmod");
+        set_exec_perms(&script_path);
         script_path
     }
 
@@ -888,9 +897,7 @@ mod tests {
         ]
         .join("\n");
         fs::write(&script_path, script).expect("write script");
-        let mut permissions = fs::metadata(&script_path).expect("metadata").permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&script_path, permissions).expect("chmod");
+        set_exec_perms(&script_path);
         script_path
     }
 
@@ -1014,9 +1021,7 @@ mod tests {
         ]
         .join("\n");
         fs::write(&script_path, script).expect("write script");
-        let mut permissions = fs::metadata(&script_path).expect("metadata").permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&script_path, permissions).expect("chmod");
+        set_exec_perms(&script_path);
         script_path
     }
 
@@ -1118,9 +1123,7 @@ mod tests {
         ]
         .join("\n");
         fs::write(&script_path, script).expect("write script");
-        let mut permissions = fs::metadata(&script_path).expect("metadata").permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&script_path, permissions).expect("chmod");
+        set_exec_perms(&script_path);
         script_path
     }
 
