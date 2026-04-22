@@ -17,10 +17,6 @@ pub mod sandbox;
 mod session;
 mod usage;
 
-pub use lsp::{
-    FileDiagnostics, LspContextEnrichment, LspError, LspManager, LspServerConfig,
-    SymbolLocation, WorkspaceDiagnostics,
-};
 pub use bash::{execute_bash, BashCommandInput, BashCommandOutput};
 pub use bootstrap::{BootstrapPhase, BootstrapPlan};
 pub use compact::{
@@ -29,7 +25,7 @@ pub use compact::{
 };
 pub use config::{
     default_config_home, home_dir, ConfigEntry, ConfigError, ConfigLoader, ConfigSource,
-    McpManagedProxyServerConfig, McpConfigCollection, McpOAuthConfig, McpRemoteServerConfig,
+    McpConfigCollection, McpManagedProxyServerConfig, McpOAuthConfig, McpRemoteServerConfig,
     McpSdkServerConfig, McpServerConfig, McpStdioServerConfig, McpTransport,
     McpWebSocketServerConfig, OAuthConfig, ResolvedPermissionMode, RuntimeConfig,
     RuntimeFeatureConfig, RuntimeHookConfig, RuntimePluginConfig, ScopedMcpServerConfig,
@@ -45,12 +41,16 @@ pub use file_ops::{
     WriteFileOutput,
 };
 pub use hooks::{HookEvent, HookRunResult, HookRunner};
+pub use lsp::{
+    FileDiagnostics, LspContextEnrichment, LspError, LspManager, LspServerConfig, SymbolLocation,
+    WorkspaceDiagnostics,
+};
 pub use mcp::{
     mcp_server_signature, mcp_tool_name, mcp_tool_prefix, normalize_name_for_mcp,
     scoped_mcp_config_hash, unwrap_ccr_proxy_url,
 };
 pub use mcp_client::{
-    McpManagedProxyTransport, McpClientAuth, McpClientBootstrap, McpClientTransport,
+    McpClientAuth, McpClientBootstrap, McpClientTransport, McpManagedProxyTransport,
     McpRemoteTransport, McpSdkTransport, McpStdioTransport,
 };
 pub use mcp_stdio::{

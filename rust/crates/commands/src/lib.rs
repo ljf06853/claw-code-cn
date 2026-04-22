@@ -2566,7 +2566,10 @@ mod tests {
         assert!(created.contains("feature/demo"));
         assert!(switched.contains("main"));
         assert!(added.contains("wt-demo"));
-        let normalized_path = worktree_path.to_str().expect("utf8 path").replace('\\', "/");
+        let normalized_path = worktree_path
+            .to_str()
+            .expect("utf8 path")
+            .replace('\\', "/");
         assert!(
             listed_worktrees.contains(worktree_path.to_str().expect("utf8 path"))
                 || listed_worktrees.contains(&normalized_path)

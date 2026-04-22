@@ -16,9 +16,10 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use api::{
-    resolve_startup_auth_source, AuthSource, ClawApiClient, ContentBlockDelta, InputContentBlock,
-    InputMessage, MessageRequest, MessageResponse, OutputContentBlock, ProviderClient,
-    StreamEvent as ApiStreamEvent, ToolChoice, ToolDefinition, ToolResultContentBlock,
+    max_tokens_for_model, resolve_startup_auth_source, AuthSource, ClawApiClient,
+    ContentBlockDelta, InputContentBlock, InputMessage, MessageRequest, MessageResponse,
+    OutputContentBlock, ProviderClient, StreamEvent as ApiStreamEvent, ToolChoice, ToolDefinition,
+    ToolResultContentBlock,
 };
 
 use commands::{
@@ -44,13 +45,6 @@ use tools::GlobalToolRegistry;
 const FALLBACK_MODEL: &str = "claude-opus-4-6";
 fn default_model() -> String {
     std::env::var("CLAW_MODEL").unwrap_or_else(|_| FALLBACK_MODEL.to_string())
-}
-fn max_tokens_for_model(model: &str) -> u32 {
-    if model.contains("opus") {
-        32_000
-    } else {
-        64_000
-    }
 }
 const DEFAULT_DATE: &str = "2026-03-31";
 const DEFAULT_OAUTH_CALLBACK_PORT: u16 = 4545;
@@ -3873,6 +3867,13 @@ impl CliToolExecutor {
 }
 
 impl ToolExecutor for CliToolExecutor {
+    fn has_tool(&self, tool_name: &str) -> bool {
+        self.allowed_tools
+            .as_ref()
+            .is_none_or(|allowed| allowed.contains(tool_name))
+            && self.tool_registry.contains(tool_name)
+    }
+
     fn execute(&mut self, tool_name: &str, input: &str) -> Result<String, ToolError> {
         if self
             .allowed_tools
@@ -4110,16 +4111,16 @@ fn print_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        describe_tool_progress, filter_tool_specs, format_compact_report, format_cost_report,
-        format_internal_prompt_progress_line, format_model_report, format_model_switch_report,
-        format_permissions_report, format_permissions_switch_report, format_resume_report,
-        format_status_report, format_tool_call_start, format_tool_result,
+        default_model, describe_tool_progress, filter_tool_specs, format_compact_report,
+        format_cost_report, format_internal_prompt_progress_line, format_model_report,
+        format_model_switch_report, format_permissions_report, format_permissions_switch_report,
+        format_resume_report, format_status_report, format_tool_call_start, format_tool_result,
         normalize_permission_mode, parse_args, parse_git_status_metadata, permission_policy,
         print_help_to, push_output_block, render_config_report, render_memory_report,
         render_repl_help, render_unknown_repl_command, resolve_model_alias, response_to_events,
         resume_supported_slash_commands, slash_command_completion_candidates, status_context,
         CliAction, CliOutputFormat, InternalPromptProgressEvent, InternalPromptProgressState,
-        SlashCommand, StatusUsage, default_model,
+        SlashCommand, StatusUsage,
     };
     use api::{MessageResponse, OutputContentBlock, Usage};
     use plugins::{PluginTool, PluginToolDefinition, PluginToolPermission};

@@ -783,11 +783,14 @@ fn translate_message(message: &InputMessage) -> Vec<Value> {
             if text.is_empty() && tool_calls.is_empty() {
                 Vec::new()
             } else {
-                vec![json!({
+                let mut assistant_message = json!({
                     "role": "assistant",
                     "content": (!text.is_empty()).then_some(text),
-                    "tool_calls": tool_calls,
-                })]
+                });
+                if !tool_calls.is_empty() {
+                    assistant_message["tool_calls"] = Value::Array(tool_calls);
+                }
+                vec![assistant_message]
             }
         }
         _ => message
@@ -1082,6 +1085,42 @@ mod tests {
         assert_eq!(payload["messages"][2]["role"], json!("tool"));
         assert_eq!(payload["tools"][0]["type"], json!("function"));
         assert_eq!(payload["tool_choice"], json!("auto"));
+    }
+
+    #[test]
+    fn request_translation_omits_empty_tool_calls_for_text_only_assistant_messages() {
+        let payload = build_chat_completion_request(&MessageRequest {
+            model: "qwen3.5-35b-a3b".to_string(),
+            max_tokens: 64,
+            messages: vec![
+                InputMessage {
+                    role: "assistant".to_string(),
+                    content: vec![InputContentBlock::Text {
+                        text: "previous answer".to_string(),
+                    }],
+                },
+                InputMessage {
+                    role: "user".to_string(),
+                    content: vec![InputContentBlock::Text {
+                        text: "?".to_string(),
+                    }],
+                },
+            ],
+            system: None,
+            tools: None,
+            tool_choice: None,
+            stream: false,
+        });
+
+        let assistant = payload["messages"][0]
+            .as_object()
+            .expect("assistant message should be an object");
+        assert_eq!(assistant.get("role"), Some(&json!("assistant")));
+        assert_eq!(assistant.get("content"), Some(&json!("previous answer")));
+        assert!(
+            assistant.get("tool_calls").is_none(),
+            "text-only assistant messages must not serialize an empty tool_calls array"
+        );
     }
 
     #[test]

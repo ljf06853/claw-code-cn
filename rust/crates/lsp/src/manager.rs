@@ -26,7 +26,9 @@ impl LspManager {
         for config in server_configs {
             for extension in config.extension_to_language.keys() {
                 let normalized = normalize_extension(extension);
-                if let Some(existing_server) = extension_map.insert(normalized.clone(), config.name.clone()) {
+                if let Some(existing_server) =
+                    extension_map.insert(normalized.clone(), config.name.clone())
+                {
                     return Err(LspError::DuplicateExtension {
                         extension: normalized,
                         existing_server,
@@ -53,7 +55,10 @@ impl LspManager {
     }
 
     pub async fn open_document(&self, path: &Path, text: &str) -> Result<(), LspError> {
-        self.client_for_path(path).await?.open_document(path, text).await
+        self.client_for_path(path)
+            .await?
+            .open_document(path, text)
+            .await
     }
 
     pub async fn sync_document_from_disk(&self, path: &Path) -> Result<(), LspError> {
@@ -63,7 +68,10 @@ impl LspManager {
     }
 
     pub async fn change_document(&self, path: &Path, text: &str) -> Result<(), LspError> {
-        self.client_for_path(path).await?.change_document(path, text).await
+        self.client_for_path(path)
+            .await?
+            .change_document(path, text)
+            .await
     }
 
     pub async fn save_document(&self, path: &Path) -> Result<(), LspError> {
@@ -79,7 +87,11 @@ impl LspManager {
         path: &Path,
         position: Position,
     ) -> Result<Vec<SymbolLocation>, LspError> {
-        let mut locations = self.client_for_path(path).await?.go_to_definition(path, position).await?;
+        let mut locations = self
+            .client_for_path(path)
+            .await?
+            .go_to_definition(path, position)
+            .await?;
         dedupe_locations(&mut locations);
         Ok(locations)
     }
@@ -100,14 +112,21 @@ impl LspManager {
     }
 
     pub async fn collect_workspace_diagnostics(&self) -> Result<WorkspaceDiagnostics, LspError> {
-        let clients = self.clients.lock().await.values().cloned().collect::<Vec<_>>();
+        let clients = self
+            .clients
+            .lock()
+            .await
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
         let mut files = Vec::new();
 
         for client in clients {
             for (uri, diagnostics) in client.diagnostics_snapshot().await {
-                let Ok(path) = url::Url::parse(&uri)
-                    .and_then(|url| url.to_file_path().map_err(|()| url::ParseError::RelativeUrlWithoutBase))
-                else {
+                let Ok(path) = url::Url::parse(&uri).and_then(|url| {
+                    url.to_file_path()
+                        .map_err(|()| url::ParseError::RelativeUrlWithoutBase)
+                }) else {
                     continue;
                 };
                 if diagnostics.is_empty() {

@@ -33,6 +33,8 @@ pub trait ApiClient {
 }
 
 pub trait ToolExecutor {
+    fn has_tool(&self, tool_name: &str) -> bool;
+
     fn execute(&mut self, tool_name: &str, input: &str) -> Result<String, ToolError>;
 }
 
@@ -199,6 +201,18 @@ where
             }
 
             for (tool_use_id, tool_name, input) in pending_tool_uses {
+                if !self.tool_executor.has_tool(&tool_name) {
+                    let result_message = ConversationMessage::tool_result(
+                        tool_use_id,
+                        tool_name.clone(),
+                        ignored_tool_message(&tool_name),
+                        false,
+                    );
+                    self.session.messages.push(result_message.clone());
+                    tool_results.push(result_message);
+                    continue;
+                }
+
                 let permission_outcome = if let Some(prompt) = prompter.as_mut() {
                     self.permission_policy
                         .authorize(&tool_name, &input, Some(*prompt))
@@ -386,11 +400,19 @@ impl StaticToolExecutor {
 }
 
 impl ToolExecutor for StaticToolExecutor {
+    fn has_tool(&self, tool_name: &str) -> bool {
+        self.handlers.contains_key(tool_name)
+    }
+
     fn execute(&mut self, tool_name: &str, input: &str) -> Result<String, ToolError> {
         self.handlers
             .get_mut(tool_name)
             .ok_or_else(|| ToolError::new(format!("unknown tool: {tool_name}")))?(input)
     }
+}
+
+fn ignored_tool_message(tool_name: &str) -> String {
+    format!("Ignored unavailable tool call `{tool_name}`. Continue without using it.")
 }
 
 #[cfg(test)]
@@ -559,7 +581,9 @@ mod tests {
         let mut runtime = ConversationRuntime::new(
             Session::new(),
             SingleCallApiClient,
-            StaticToolExecutor::new(),
+            StaticToolExecutor::new().register("blocked", |_input| {
+                panic!("blocked tool should not execute when permission is denied")
+            }),
             PermissionPolicy::new(PermissionMode::WorkspaceWrite),
             vec!["system".to_string()],
         );
@@ -572,6 +596,81 @@ mod tests {
         assert!(matches!(
             &summary.tool_results[0].blocks[0],
             ContentBlock::ToolResult { is_error: true, output, .. } if output == "not now"
+        ));
+    }
+
+    #[test]
+    fn ignores_unavailable_tool_calls_without_prompting() {
+        struct PanicPrompter;
+        impl PermissionPrompter for PanicPrompter {
+            fn decide(&mut self, _request: &PermissionRequest) -> PermissionPromptDecision {
+                panic!("permission prompt should not run for unavailable tools");
+            }
+        }
+
+        struct UnknownToolApiClient {
+            calls: usize,
+        }
+
+        impl ApiClient for UnknownToolApiClient {
+            fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
+                self.calls += 1;
+                match self.calls {
+                    1 => Ok(vec![
+                        AssistantEvent::ToolUse {
+                            id: "tool-1".to_string(),
+                            name: "missing_tool".to_string(),
+                            input: r#"{"path":"ignored.txt"}"#.to_string(),
+                        },
+                        AssistantEvent::MessageStop,
+                    ]),
+                    2 => {
+                        let last_message = request
+                            .messages
+                            .last()
+                            .expect("ignored tool result should be present");
+                        let ContentBlock::ToolResult {
+                            is_error, output, ..
+                        } = &last_message.blocks[0]
+                        else {
+                            panic!("expected tool result block");
+                        };
+                        assert!(
+                            !*is_error,
+                            "ignored tool results must stay non-error: {output:?}"
+                        );
+                        assert!(
+                            output.contains("Ignored unavailable tool call `missing_tool`"),
+                            "unexpected ignored tool output: {output:?}"
+                        );
+                        Ok(vec![
+                            AssistantEvent::TextDelta("continued".to_string()),
+                            AssistantEvent::MessageStop,
+                        ])
+                    }
+                    _ => Err(RuntimeError::new("unexpected extra API call")),
+                }
+            }
+        }
+
+        let mut runtime = ConversationRuntime::new(
+            Session::new(),
+            UnknownToolApiClient { calls: 0 },
+            StaticToolExecutor::new(),
+            PermissionPolicy::new(PermissionMode::WorkspaceWrite),
+            vec!["system".to_string()],
+        );
+
+        let summary = runtime
+            .run_turn("use the missing tool", Some(&mut PanicPrompter))
+            .expect("conversation should continue after ignoring unavailable tool");
+
+        assert_eq!(summary.iterations, 2);
+        assert_eq!(summary.tool_results.len(), 1);
+        assert!(matches!(
+            &summary.tool_results[0].blocks[0],
+            ContentBlock::ToolResult { is_error: false, output, .. }
+                if output.contains("Ignored unavailable tool call `missing_tool`")
         ));
     }
 

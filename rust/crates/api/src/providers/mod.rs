@@ -369,7 +369,10 @@ pub fn max_tokens_for_model(model: &str) -> u32 {
     if canonical.contains("opus") {
         32_000
     } else {
-        64_000
+        match metadata_for_model(&canonical).map(|metadata| metadata.provider) {
+            Some(ProviderKind::Doubao) => 32_768,
+            _ => 64_000,
+        }
     }
 }
 
@@ -382,6 +385,12 @@ mod tests {
         assert_eq!(resolve_model_alias("grok"), "grok-3");
         assert_eq!(resolve_model_alias("grok-mini"), "grok-3-mini");
         assert_eq!(resolve_model_alias("grok-2"), "grok-2");
+    }
+
+    #[test]
+    fn max_tokens_respects_doubao_limit() {
+        assert_eq!(max_tokens_for_model("doubao-seed-1-8-251228"), 32_768);
+        assert_eq!(max_tokens_for_model("ep-20260101"), 32_768);
     }
 
     #[test]
@@ -407,8 +416,7 @@ mod tests {
     #[test]
     fn detects_minimax_from_model_name() {
         assert_eq!(
-            super::metadata_for_model("MiniMax-M2.7")
-                .map(|m| m.provider),
+            super::metadata_for_model("MiniMax-M2.7").map(|m| m.provider),
             Some(ProviderKind::MiniMax)
         );
     }
@@ -416,8 +424,7 @@ mod tests {
     #[test]
     fn detects_deepseek_from_model_name() {
         assert_eq!(
-            super::metadata_for_model("deepseek-chat")
-                .map(|m| m.provider),
+            super::metadata_for_model("deepseek-chat").map(|m| m.provider),
             Some(ProviderKind::DeepSeek)
         );
     }
