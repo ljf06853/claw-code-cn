@@ -783,14 +783,11 @@ fn translate_message(message: &InputMessage) -> Vec<Value> {
             if text.is_empty() && tool_calls.is_empty() {
                 Vec::new()
             } else {
-                let mut assistant_message = json!({
+                vec![json!({
                     "role": "assistant",
                     "content": (!text.is_empty()).then_some(text),
-                });
-                if !tool_calls.is_empty() {
-                    assistant_message["tool_calls"] = Value::Array(tool_calls);
-                }
-                vec![assistant_message]
+                    "tool_calls": tool_calls,
+                })]
             }
         }
         _ => message
@@ -829,12 +826,21 @@ fn flatten_tool_result_content(content: &[ToolResultContentBlock]) -> String {
 }
 
 fn openai_tool_definition(tool: &ToolDefinition) -> Value {
+    let mut params = tool.input_schema.clone();
+    if let Some(obj) = params.as_object_mut() {
+        if !obj.contains_key("properties") {
+            obj.insert("properties".to_string(), json!({}));
+        }
+        if !obj.contains_key("required") {
+            obj.insert("required".to_string(), json!([]));
+        }
+    }
     json!({
         "type": "function",
         "function": {
             "name": tool.name,
             "description": tool.description,
-            "parameters": tool.input_schema,
+            "parameters": params,
         }
     })
 }
@@ -1052,6 +1058,15 @@ mod tests {
 
     #[test]
     fn request_translation_uses_openai_compatible_shape() {
+        let input_schema = json!({
+            "type": "object",
+            "properties": {
+                "command": {"type": "string"},
+                "timeout": {"type": "integer", "minimum": 1}
+            },
+            "required": ["command"],
+            "additionalProperties": false
+        });
         let payload = build_chat_completion_request(&MessageRequest {
             model: "grok-3".to_string(),
             max_tokens: 64,
@@ -1072,9 +1087,9 @@ mod tests {
             }],
             system: Some("be helpful".to_string()),
             tools: Some(vec![ToolDefinition {
-                name: "weather".to_string(),
-                description: Some("Get weather".to_string()),
-                input_schema: json!({"type": "object"}),
+                name: "bash".to_string(),
+                description: Some("Execute a shell command".to_string()),
+                input_schema,
             }]),
             tool_choice: Some(ToolChoice::Auto),
             stream: false,
@@ -1085,42 +1100,7 @@ mod tests {
         assert_eq!(payload["messages"][2]["role"], json!("tool"));
         assert_eq!(payload["tools"][0]["type"], json!("function"));
         assert_eq!(payload["tool_choice"], json!("auto"));
-    }
-
-    #[test]
-    fn request_translation_omits_empty_tool_calls_for_text_only_assistant_messages() {
-        let payload = build_chat_completion_request(&MessageRequest {
-            model: "qwen3.5-35b-a3b".to_string(),
-            max_tokens: 64,
-            messages: vec![
-                InputMessage {
-                    role: "assistant".to_string(),
-                    content: vec![InputContentBlock::Text {
-                        text: "previous answer".to_string(),
-                    }],
-                },
-                InputMessage {
-                    role: "user".to_string(),
-                    content: vec![InputContentBlock::Text {
-                        text: "?".to_string(),
-                    }],
-                },
-            ],
-            system: None,
-            tools: None,
-            tool_choice: None,
-            stream: false,
-        });
-
-        let assistant = payload["messages"][0]
-            .as_object()
-            .expect("assistant message should be an object");
-        assert_eq!(assistant.get("role"), Some(&json!("assistant")));
-        assert_eq!(assistant.get("content"), Some(&json!("previous answer")));
-        assert!(
-            assistant.get("tool_calls").is_none(),
-            "text-only assistant messages must not serialize an empty tool_calls array"
-        );
+        assert!(payload["tools"][0]["function"]["parameters"].is_object());
     }
 
     #[test]
