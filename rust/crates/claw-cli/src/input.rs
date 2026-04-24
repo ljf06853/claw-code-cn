@@ -6,6 +6,8 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use crossterm::queue;
 use crossterm::terminal::{self, Clear, ClearType};
 
+use crate::render::visible_width;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadOutcome {
     Submit(String),
@@ -222,8 +224,9 @@ impl EditSession {
         let cursor_prefix = &active_text[..cursor];
         let cursor_row = cursor_prefix.bytes().filter(|byte| *byte == b'\n').count();
         let cursor_col = match cursor_prefix.rsplit_once('\n') {
-            Some((_, suffix)) => suffix.chars().count(),
-            None => prompt.chars().count() + cursor_prefix.chars().count(),
+            Some((_, suffix)) => visible_width(suffix),
+            None if cursor_row == 0 => visible_width(prompt) + visible_width(cursor_prefix),
+            None => visible_width(cursor_prefix),
         };
         let total_lines = active_text.bytes().filter(|byte| *byte == b'\n').count() + 1;
         (cursor_row, cursor_col, total_lines)

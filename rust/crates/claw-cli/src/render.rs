@@ -665,8 +665,11 @@ fn find_stream_safe_boundary(markdown: &str) -> Option<usize> {
     last_boundary
 }
 
-fn visible_width(input: &str) -> usize {
-    strip_ansi(input).chars().count()
+pub fn visible_width(input: &str) -> usize {
+    strip_ansi(input)
+        .chars()
+        .map(|c| unicode_width::UnicodeWidthChar::width(c).unwrap_or(1))
+        .sum()
 }
 
 fn strip_ansi(input: &str) -> String {
