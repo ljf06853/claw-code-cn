@@ -16,10 +16,9 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use api::{
-    max_tokens_for_model, resolve_startup_auth_source, AuthSource, ClawApiClient,
-    ContentBlockDelta, InputContentBlock, InputMessage, MessageRequest, MessageResponse,
-    OutputContentBlock, ProviderClient, StreamEvent as ApiStreamEvent, ToolChoice, ToolDefinition,
-    ToolResultContentBlock,
+    max_tokens_for_model, AuthSource, ClawApiClient, ContentBlockDelta, InputContentBlock,
+    InputMessage, MessageRequest, MessageResponse, OutputContentBlock, ProviderClient,
+    StreamEvent as ApiStreamEvent, ToolChoice, ToolDefinition, ToolResultContentBlock,
 };
 
 use commands::{
@@ -3068,16 +3067,6 @@ impl DefaultRuntimeClient {
     }
 }
 
-fn resolve_cli_auth_source() -> Result<AuthSource, Box<dyn std::error::Error>> {
-    Ok(resolve_startup_auth_source(|| {
-        let cwd = env::current_dir().map_err(api::ApiError::from)?;
-        let config = ConfigLoader::default_for(&cwd).load().map_err(|error| {
-            api::ApiError::Auth(format!("failed to load runtime OAuth config: {error}"))
-        })?;
-        Ok(config.oauth().cloned())
-    })?)
-}
-
 impl ApiClient for DefaultRuntimeClient {
     #[allow(clippy::too_many_lines)]
     fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
@@ -3109,6 +3098,7 @@ impl ApiClient for DefaultRuntimeClient {
             } else {
                 &mut sink
             };
+            let mut first_content_emitted = false;
             let renderer = TerminalRenderer::new();
             let mut markdown_stream = MarkdownStreamState::default();
             let mut events = Vec::new();
@@ -3122,11 +3112,23 @@ impl ApiClient for DefaultRuntimeClient {
             {
                 match event {
                     ApiStreamEvent::MessageStart(start) => {
+                        if !first_content_emitted && self.emit_output {
+                            write!(out, "\r\x1B[K")
+                                .map_err(|e| RuntimeError::new(e.to_string()))?;
+                            out.flush().map_err(|e| RuntimeError::new(e.to_string()))?;
+                            first_content_emitted = true;
+                        }
                         for block in start.message.content {
                             push_output_block(block, out, &mut events, &mut pending_tool, true)?;
                         }
                     }
                     ApiStreamEvent::ContentBlockStart(start) => {
+                        if !first_content_emitted && self.emit_output {
+                            write!(out, "\r\x1B[K")
+                                .map_err(|e| RuntimeError::new(e.to_string()))?;
+                            out.flush().map_err(|e| RuntimeError::new(e.to_string()))?;
+                            first_content_emitted = true;
+                        }
                         push_output_block(
                             start.content_block,
                             out,
@@ -3140,6 +3142,12 @@ impl ApiClient for DefaultRuntimeClient {
                             if !text.is_empty() {
                                 if let Some(progress_reporter) = &self.progress_reporter {
                                     progress_reporter.mark_text_phase(&text);
+                                }
+                                if !first_content_emitted && self.emit_output {
+                                    write!(out, "\r\x1B[K")
+                                        .map_err(|e| RuntimeError::new(e.to_string()))?;
+                                    out.flush().map_err(|e| RuntimeError::new(e.to_string()))?;
+                                    first_content_emitted = true;
                                 }
                                 if let Some(rendered) = markdown_stream.push(&renderer, &text) {
                                     write!(out, "{rendered}")
