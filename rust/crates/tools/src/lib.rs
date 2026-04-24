@@ -91,10 +91,7 @@ impl GlobalToolRegistry {
         Ok(Self { plugin_tools })
     }
 
-    pub fn normalize_allowed_tools(
-        &self,
-        values: &[String],
-    ) -> Result<Option<BTreeSet<String>>, String> {
+    pub fn normalize_allowed_tools(&self, values: &[String]) -> Result<Option<BTreeSet<String>>, String> {
         if values.is_empty() {
             return Ok(None);
         }
@@ -103,11 +100,7 @@ impl GlobalToolRegistry {
         let canonical_names = builtin_specs
             .iter()
             .map(|spec| spec.name.to_string())
-            .chain(
-                self.plugin_tools
-                    .iter()
-                    .map(|tool| tool.definition().name.clone()),
-            )
+            .chain(self.plugin_tools.iter().map(|tool| tool.definition().name.clone()))
             .collect::<Vec<_>>();
         let mut name_map = canonical_names
             .iter()
@@ -158,8 +151,7 @@ impl GlobalToolRegistry {
             .plugin_tools
             .iter()
             .filter(|tool| {
-                allowed_tools
-                    .is_none_or(|allowed| allowed.contains(tool.definition().name.as_str()))
+                allowed_tools.is_none_or(|allowed| allowed.contains(tool.definition().name.as_str()))
             })
             .map(|tool| ToolDefinition {
                 name: tool.definition().name.clone(),
@@ -182,8 +174,7 @@ impl GlobalToolRegistry {
             .plugin_tools
             .iter()
             .filter(|tool| {
-                allowed_tools
-                    .is_none_or(|allowed| allowed.contains(tool.definition().name.as_str()))
+                allowed_tools.is_none_or(|allowed| allowed.contains(tool.definition().name.as_str()))
             })
             .map(|tool| {
                 (
@@ -204,15 +195,6 @@ impl GlobalToolRegistry {
             .ok_or_else(|| format!("unsupported tool: {name}"))?
             .execute(input)
             .map_err(|error| error.to_string())
-    }
-
-    #[must_use]
-    pub fn contains(&self, name: &str) -> bool {
-        mvp_tool_specs().iter().any(|spec| spec.name == name)
-            || self
-                .plugin_tools
-                .iter()
-                .any(|tool| tool.definition().name == name)
     }
 }
 
@@ -516,6 +498,8 @@ pub fn mvp_tool_specs() -> Vec<ToolSpec> {
             description: "Return structured output in the requested format.",
             input_schema: json!({
                 "type": "object",
+                "properties": {},
+                "required": [],
                 "additionalProperties": true
             }),
             required_permission: PermissionMode::ReadOnly,
@@ -1959,11 +1943,6 @@ impl SubagentToolExecutor {
 }
 
 impl ToolExecutor for SubagentToolExecutor {
-    fn has_tool(&self, tool_name: &str) -> bool {
-        self.allowed_tools.contains(tool_name)
-            && mvp_tool_specs().iter().any(|spec| spec.name == tool_name)
-    }
-
     fn execute(&mut self, tool_name: &str, input: &str) -> Result<String, ToolError> {
         if !self.allowed_tools.contains(tool_name) {
             return Err(ToolError::new(format!(
