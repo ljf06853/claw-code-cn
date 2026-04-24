@@ -91,7 +91,18 @@ impl GlobalToolRegistry {
         Ok(Self { plugin_tools })
     }
 
-    pub fn normalize_allowed_tools(&self, values: &[String]) -> Result<Option<BTreeSet<String>>, String> {
+    pub fn contains(&self, tool_name: &str) -> bool {
+        mvp_tool_specs().iter().any(|spec| spec.name == tool_name)
+            || self
+                .plugin_tools
+                .iter()
+                .any(|tool| tool.definition().name == tool_name)
+    }
+
+    pub fn normalize_allowed_tools(
+        &self,
+        values: &[String],
+    ) -> Result<Option<BTreeSet<String>>, String> {
         if values.is_empty() {
             return Ok(None);
         }
@@ -100,7 +111,11 @@ impl GlobalToolRegistry {
         let canonical_names = builtin_specs
             .iter()
             .map(|spec| spec.name.to_string())
-            .chain(self.plugin_tools.iter().map(|tool| tool.definition().name.clone()))
+            .chain(
+                self.plugin_tools
+                    .iter()
+                    .map(|tool| tool.definition().name.clone()),
+            )
             .collect::<Vec<_>>();
         let mut name_map = canonical_names
             .iter()
@@ -151,7 +166,8 @@ impl GlobalToolRegistry {
             .plugin_tools
             .iter()
             .filter(|tool| {
-                allowed_tools.is_none_or(|allowed| allowed.contains(tool.definition().name.as_str()))
+                allowed_tools
+                    .is_none_or(|allowed| allowed.contains(tool.definition().name.as_str()))
             })
             .map(|tool| ToolDefinition {
                 name: tool.definition().name.clone(),
@@ -174,7 +190,8 @@ impl GlobalToolRegistry {
             .plugin_tools
             .iter()
             .filter(|tool| {
-                allowed_tools.is_none_or(|allowed| allowed.contains(tool.definition().name.as_str()))
+                allowed_tools
+                    .is_none_or(|allowed| allowed.contains(tool.definition().name.as_str()))
             })
             .map(|tool| {
                 (
@@ -896,7 +913,7 @@ struct AgentJob {
     manifest: AgentOutput,
     prompt: String,
     system_prompt: Vec<String>,
-    allowed_tools: BTreeSet<String>,
+    allowed_tools: Option<BTreeSet<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1534,7 +1551,7 @@ where
         .unwrap_or_else(|| slugify_agent_name(&input.description));
     let created_at = iso8601_now();
     let system_prompt = build_agent_system_prompt(&normalized_subagent_type)?;
-    let allowed_tools = allowed_tools_for_subagent(&normalized_subagent_type);
+    let allowed_tools = Some(allowed_tools_for_subagent(&normalized_subagent_type));
 
     let output_contents = format!(
         "# Agent Task
@@ -1803,11 +1820,11 @@ struct ProviderRuntimeClient {
     runtime: tokio::runtime::Runtime,
     client: ProviderClient,
     model: String,
-    allowed_tools: BTreeSet<String>,
+    allowed_tools: Option<BTreeSet<String>>,
 }
 
 impl ProviderRuntimeClient {
-    fn new(model: String, allowed_tools: BTreeSet<String>) -> Result<Self, String> {
+    fn new(model: String, allowed_tools: Option<BTreeSet<String>>) -> Result<Self, String> {
         let model = resolve_model_alias(&model).to_string();
         let client = ProviderClient::from_model(&model).map_err(|error| error.to_string())?;
         Ok(Self {
@@ -1821,7 +1838,7 @@ impl ProviderRuntimeClient {
 
 impl ApiClient for ProviderRuntimeClient {
     fn stream(&mut self, request: ApiRequest) -> Result<Vec<AssistantEvent>, RuntimeError> {
-        let tools = tool_specs_for_allowed_tools(Some(&self.allowed_tools))
+        let tools = tool_specs_for_allowed_tools(self.allowed_tools.as_ref())
             .into_iter()
             .map(|spec| ToolDefinition {
                 name: spec.name.to_string(),
@@ -1835,7 +1852,11 @@ impl ApiClient for ProviderRuntimeClient {
             messages: convert_messages(&request.messages),
             system: (!request.system_prompt.is_empty()).then(|| request.system_prompt.join("\n\n")),
             tools: (!tools.is_empty()).then_some(tools),
-            tool_choice: (!self.allowed_tools.is_empty()).then_some(ToolChoice::Auto),
+            tool_choice: self
+                .allowed_tools
+                .as_ref()
+                .is_some_and(|tools| !tools.is_empty())
+                .then_some(ToolChoice::Auto),
             stream: true,
         };
 
@@ -1933,18 +1954,24 @@ impl ApiClient for ProviderRuntimeClient {
 }
 
 struct SubagentToolExecutor {
-    allowed_tools: BTreeSet<String>,
+    allowed_tools: Option<BTreeSet<String>>,
 }
 
 impl SubagentToolExecutor {
-    fn new(allowed_tools: BTreeSet<String>) -> Self {
+    fn new(allowed_tools: Option<BTreeSet<String>>) -> Self {
         Self { allowed_tools }
     }
 }
 
 impl ToolExecutor for SubagentToolExecutor {
+    fn has_tool(&self, tool_name: &str) -> bool {
+        self.allowed_tools
+            .as_ref()
+            .is_none_or(|allowed| allowed.contains(tool_name))
+    }
+
     fn execute(&mut self, tool_name: &str, input: &str) -> Result<String, ToolError> {
-        if !self.allowed_tools.contains(tool_name) {
+        if !self.has_tool(tool_name) {
             return Err(ToolError::new(format!(
                 "tool `{tool_name}` is not enabled for this sub-agent"
             )));
@@ -3572,8 +3599,9 @@ mod tests {
             .clone()
             .expect("spawn job should be captured");
         assert_eq!(captured_job.prompt, "Check tests and outstanding work.");
-        assert!(captured_job.allowed_tools.contains("read_file"));
-        assert!(!captured_job.allowed_tools.contains("Agent"));
+        let allowed_tools = captured_job.allowed_tools.as_ref().unwrap();
+        assert!(allowed_tools.contains("read_file"));
+        assert!(!allowed_tools.contains("Agent"));
 
         let normalized = execute_tool(
             "Agent",
@@ -3764,7 +3792,7 @@ mod tests {
                 calls: 0,
                 input_path: path.display().to_string(),
             },
-            SubagentToolExecutor::new(BTreeSet::from([String::from("read_file")])),
+            SubagentToolExecutor::new(Some(BTreeSet::from([String::from("read_file")]))),
             agent_permission_policy(),
             vec![String::from("system prompt")],
         );
